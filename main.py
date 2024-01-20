@@ -4,12 +4,13 @@
 import logging
 import os
 import time
-from dotenv import load_dotenv
+from datetime import datetime
 
 import cv2
 import numpy as np
 import schedule
 import tinytuya
+from dotenv import load_dotenv
 from influxdb import InfluxDBClient
 
 # config logging
@@ -26,12 +27,13 @@ influxdb_database_name = os.getenv('influxdb_database_name')
 # tuya api
 local_device_id = os.getenv('local_device_id')
 local_device_ip = os.getenv('local_device_ip')
+local_device_key = os.getenv('local_device_key')
 local_device_version = os.getenv('local_device_version')
 
 work_directory = os.getenv('work_directory')
 rtsp_url = os.getenv('rtsp_url')
 
-# duration interval in seconds
+# duration interval in minutes
 duration = 30
 
 json_data = {"measurement": "sensor_data", "tags": {}, "time": time.strftime('%Y-%m-%dT%H:%M:%S'), "fields": {}}
@@ -60,8 +62,10 @@ output_image = (lambda n, v: cv2.imwrite(work_directory + n + '.png', v))
 
 
 def get_temperature_sensor_data() -> dict:
-    c = tinytuya.OutletDevice(dev_id=local_device_id, address=local_device_ip, version=local_device_version)
-    dps = c.status()['dps']
+    c = tinytuya.OutletDevice(dev_id=local_device_id, address=local_device_ip, version=local_device_version,
+                              local_key=local_device_key)
+    status = c.status()
+    dps = status['dps']
 
     return {
         "temperature": dps[temperature],
@@ -113,7 +117,9 @@ def save_image(timestamp):
     ret, frame = cap.read()
     cv2.imshow('Capturing', frame)
 
-    filename = work_directory + timestamp + '.png'
+    formatted_date = datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d_%H-%M-%S')
+
+    filename = work_directory + formatted_date + '.png'
     cv2.imwrite(filename, frame)
     logging.info(f"{filename} image saved!")
     cap.release()
@@ -122,6 +128,7 @@ def save_image(timestamp):
 
 
 def routine():
+    # get the current timestamp
     current_time = time.strftime('%Y-%m-%dT%H:%M:%S')
     json_data['time'] = current_time
 
@@ -132,26 +139,26 @@ def routine():
 
     # get temp/humid sensor
     json_data["fields"] = get_temperature_sensor_data()
-    clones = count_bacteria_clones(filename)
-    logging.info(f"Number of clones: {clones}")
+    #    clones = count_bacteria_clones(filename)
+    #    logging.info(f"Number of clones: {clones}")
 
-    json_data["fields"]["counter"] = clones
+    #    json_data["fields"]["counter"] = clones
 
     logging.info(f"json data: {json_data}")
 
-    return json_data
+    json = [json_data]
+    client = InfluxDBClient(host=influxdb_ip, port=influxdb_port, username=influxdb_username,
+                            password=influxdb_password, database=influxdb_database_name, gzip=True)
+    client.write_points(json)
+    client.close()
 
 
 # Schedule your function to run every 10 minutes
-schedule.every(30).seconds.do(routine)
+schedule.every(duration).minutes.do(routine)
 
 if __name__ == '__main__':
-
-    client = InfluxDBClient(influxdb_ip, influxdb_port, influxdb_username, influxdb_password)
     logging.info("app starts!")
-    try:
-        while True:
-            schedule.run_pending()
-            time.sleep(duration)
-    except KeyboardInterrupt:
-        client.close()
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
