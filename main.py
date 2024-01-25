@@ -34,7 +34,9 @@ work_directory = os.getenv('work_directory')
 rtsp_url = os.getenv('rtsp_url')
 
 # duration interval in minutes
-duration = 30
+duration_picture = 10
+# duration interval in seconds
+duration_sensor = 30
 
 json_data = {"measurement": "sensor_data", "tags": {}, "time": time.strftime('%Y-%m-%dT%H:%M:%S'), "fields": {}}
 
@@ -127,15 +129,19 @@ def save_image(timestamp):
     return filename
 
 
+def take_picture():
+    current_time = time.strftime('%Y-%m-%dT%H:%M:%S')
+    # save file
+    filename = save_image(current_time)
+    json_data["tags"]["file_name"] = filename
+    logging.info(f"saved image: {filename}")
+
+
 def routine():
     # get the current timestamp
     current_time = time.strftime('%Y-%m-%dT%H:%M:%S')
     json_data['time'] = current_time
 
-    # save file
-    filename = save_image(current_time)
-    json_data["tags"]["file_name"] = filename
-    logging.info(f"saved image: {filename}")
 
     # get temp/humid sensor
     json_data["fields"] = get_temperature_sensor_data()
@@ -154,10 +160,14 @@ def routine():
 
 
 # Schedule your function to run every 10 minutes
-schedule.every(duration).minutes.do(routine)
+schedule.every(duration_sensor).seconds.do(routine)
+schedule.every(duration_picture).minutes.do(take_picture)
 
 if __name__ == '__main__':
     logging.info("app starts!")
+    routine()
+    take_picture()
+    logging.info("first observation completes.  now let's keep observing.")
 
     while True:
         schedule.run_pending()
