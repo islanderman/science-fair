@@ -42,9 +42,9 @@ json_data = {"measurement": "sensor_data", "tags": {}, "time": time.strftime('%Y
 
 # use this monitor https://geekness.eu/python-tinytuya-temperature-monitor
 # see lookup table inside for particular metrics
-temperature = '1'
-humidity = '2'
-light_intensity = '16'
+temperature_index = '1'
+humidity_index = '2'
+light_intensity_index = '16'
 
 # Kernal to be used for strong laplace filtering
 kernal_stkernal_strongrong = np.array([
@@ -64,18 +64,31 @@ output_image = (lambda n, v: cv2.imwrite(work_directory + n + '.png', v))
 
 
 def get_temperature_sensor_data() -> dict:
-    c = tinytuya.OutletDevice(dev_id=local_device_id, address=local_device_ip, version=local_device_version,
-                              local_key=local_device_key)
-    status = c.status()
-    logging.info(f"sensor data: {status['dps']}")
-    dps = status['dps']
+    try:
+        c = tinytuya.OutletDevice(dev_id=local_device_id, address=local_device_ip, version=local_device_version,
+                                  local_key=local_device_key)
+        status = c.status()
+        dps = status.get('dps', {})
 
-    c.close()
-    return {
-        "temperature": dps[temperature],
-        "humidity": dps[humidity],
-        "light_intensity": dps[light_intensity]
-    }
+        temperature_value = dps.get(temperature_index)
+        humidity_value = dps.get(humidity_index)
+        light_intensity_value = dps.get(light_intensity_index)
+
+        c.close()
+
+        if temperature_value is not None and humidity_value is not None and light_intensity_value is not None:
+            logging.info("Sensor data retrieved successfully.")
+            return {
+                "temperature": temperature_value,
+                "humidity": humidity_value,
+                "light_intensity": light_intensity_value
+            }
+        else:
+            logging.warning("Incomplete sensor data retrieved.")
+            return {}
+    except Exception as e:
+        logging.error(f"Error retrieving sensor data: {str(e)}")
+        return {}
 
 
 def count_bacteria_clones(image_path) -> int:
@@ -167,13 +180,16 @@ def routine():
 
     #    json_data["fields"]["counter"] = clones
 
-    logging.info(f"json data: {json_data}")
+    if json_data["fields"] is not None:
+        logging.info(f"json data: {json_data}")
 
-    json = [json_data]
-    client = InfluxDBClient(host=influxdb_ip, port=influxdb_port, username=influxdb_username,
-                            password=influxdb_password, database=influxdb_database_name, gzip=True)
-    client.write_points(json)
-    client.close()
+        json = [json_data]
+        client = InfluxDBClient(host=influxdb_ip, port=influxdb_port, username=influxdb_username,
+                                password=influxdb_password, database=influxdb_database_name, gzip=True)
+        client.write_points(json)
+        client.close()
+    else:
+        logging.error("unable to record sensor")
 
 
 # Schedule your function to run every 10 minutes
