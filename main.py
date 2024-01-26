@@ -67,8 +67,10 @@ def get_temperature_sensor_data() -> dict:
     c = tinytuya.OutletDevice(dev_id=local_device_id, address=local_device_ip, version=local_device_version,
                               local_key=local_device_key)
     status = c.status()
+    logging.info(f"sensor data: {status['dps']}")
     dps = status['dps']
 
+    c.close()
     return {
         "temperature": dps[temperature],
         "humidity": dps[humidity],
@@ -114,23 +116,38 @@ def count_bacteria_clones(image_path) -> int:
 
 
 def save_image(timestamp):
-    logging.info(f"Saving image for {timestamp}..")
-    cap = cv2.VideoCapture(rtsp_url)
-    ret, frame = cap.read()
-    cv2.imshow('Capturing', frame)
+    filename = None
+    cap = None
 
-    formatted_date = datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d_%H-%M-%S')
+    try:
+        cap = cv2.VideoCapture(rtsp_url)
+        ret, frame = cap.read()
 
-    filename = work_directory + formatted_date + '.png'
-    cv2.imwrite(filename, frame)
-    logging.info(f"{filename} image saved!")
-    cap.release()
+        if ret:
+            formatted_date = datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d_%H-%M-%S')
+            filename = os.path.join(work_directory, formatted_date + '.png')
+            cv2.imwrite(filename, frame)
+            logging.info(f"{filename} image saved!")
+        else:
+            logging.error("Failed to capture frame from the video stream!")
 
+    except Exception as e:
+        logging.error(f"Error occurred: {str(e)}")
+
+    finally:
+        try:
+            if cap is not None:
+                cap.release()
+        except NameError:
+            pass
+
+        cv2.destroyAllWindows()
     return filename
 
 
 def take_picture():
     current_time = time.strftime('%Y-%m-%dT%H:%M:%S')
+    logging.info(f"saving pic at {current_time}")
     # save file
     filename = save_image(current_time)
     json_data["tags"]["file_name"] = filename
@@ -140,8 +157,8 @@ def take_picture():
 def routine():
     # get the current timestamp
     current_time = time.strftime('%Y-%m-%dT%H:%M:%S')
+    logging.info(f"recording sensor data at {current_time}")
     json_data['time'] = current_time
-
 
     # get temp/humid sensor
     json_data["fields"] = get_temperature_sensor_data()
@@ -165,8 +182,8 @@ schedule.every(duration_picture).minutes.do(take_picture)
 
 if __name__ == '__main__':
     logging.info("app starts!")
-    routine()
     take_picture()
+    routine()
     logging.info("first observation completes.  now let's keep observing.")
 
     while True:
