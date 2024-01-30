@@ -1,7 +1,7 @@
-# Remi's Science Fair - Fix Second Rule Observation
+# Remi's Science Fair - Five Second Rule Observation
 
 ## Overview
-This is to help Remi's science project - Fix Second Rule for better data collection.
+This is to help Remi's science project - Five Second Rule for better data collection.
 
 ### Requirement
 1. one machine to run this script continuously;
